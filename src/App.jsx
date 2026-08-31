@@ -721,6 +721,7 @@ function MainApp() {
         <BottomNav 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
+          onOpenAddModal={() => setIsTransactionModalOpen(true)}
         />
       </div>
 
