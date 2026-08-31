@@ -26,6 +26,7 @@ function MainApp() {
   // 1. Supabase Current User State
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(false);
 
   // 2. Navigation Tab State (Default: 'beranda')
   const [activeTab, setActiveTab] = useState('beranda');
@@ -174,7 +175,7 @@ function MainApp() {
         const savings = Number(data.savings_target) || 0;
         const isComplete = data.is_setup_complete !== undefined && data.is_setup_complete !== null
           ? Boolean(data.is_setup_complete)
-          : income > 0;
+          : (income > 0 || savings > 0);
 
         setUserProfile((prev) => ({
           ...prev,
@@ -188,6 +189,9 @@ function MainApp() {
         });
 
         setIsSetupComplete(isComplete);
+        try {
+          localStorage.setItem(STORAGE_KEY_SETUP, JSON.stringify(isComplete));
+        } catch (e) {}
       } else if (currentUser?.user_metadata?.name) {
         setUserProfile((prev) => ({
           ...prev,
@@ -218,13 +222,34 @@ function MainApp() {
         updatePayload.bio = bio;
       }
 
-      // Gunakan upsert dengan user_id agar otomatis membuat jika belum ada
-      const { error } = await supabase
+      // Check if profile exists for this user_id
+      const { data: existing, error: checkErr } = await supabase
         .from('user_profile')
-        .upsert(updatePayload, { onConflict: 'user_id' });
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
 
-      if (error) {
-        console.warn('Gagal update user_profile di Supabase:', error.message);
+      if (existing?.id) {
+        // Update existing row
+        const { error: updateErr } = await supabase
+          .from('user_profile')
+          .update(updatePayload)
+          .eq('user_id', currentUser.id);
+
+        if (updateErr) {
+          console.warn('Gagal update user_profile:', updateErr.message);
+        }
+      } else {
+        // Insert new row
+        const { error: insertErr } = await supabase
+          .from('user_profile')
+          .insert([updatePayload]);
+
+        if (insertErr) {
+          console.warn('Gagal insert user_profile:', insertErr.message);
+          // Fallback: try upsert
+          await supabase.from('user_profile').upsert(updatePayload, { onConflict: 'user_id' });
+        }
       }
     } catch (err) {
       console.error('Exception saat update user_profile di Supabase:', err);
@@ -279,11 +304,18 @@ function MainApp() {
     }
   }, [currentUser]);
 
-  // Panggil data profil dan transaksi saat user login
+  // Panggil data profil dan transaksi saat user login dengan loading tracking
   useEffect(() => {
     if (currentUser?.id) {
-      fetchUserProfile(currentUser.id);
-      fetchTransactions(currentUser.id);
+      setIsDataLoading(true);
+      Promise.all([
+        fetchUserProfile(currentUser.id),
+        fetchTransactions(currentUser.id),
+      ]).finally(() => {
+        setIsDataLoading(false);
+      });
+    } else {
+      setIsDataLoading(false);
     }
   }, [currentUser, fetchUserProfile, fetchTransactions]);
 
@@ -554,12 +586,13 @@ function MainApp() {
   };
 
   // --------------------------------------------------------------------------
-  // LOADING SESSION CHECK
+  // LOADING SESSION & DATA CHECK
   // --------------------------------------------------------------------------
-  if (authLoading) {
+  if (authLoading || (currentUser && isDataLoading)) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 gap-3">
         <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs text-slate-400 font-medium animate-pulse">Menyiapkan data akun Anda...</p>
       </div>
     );
   }
@@ -666,7 +699,7 @@ function MainApp() {
       </div>
 
       {/* 4. Layar Setup Wajib Onboarding (Jika isSetupComplete === false) */}
-      {!isSetupComplete && (
+      {!isDataLoading && !isSetupComplete && (
         <WelcomeSetup onCompleteSetup={handleCompleteSetup} />
       )}
 
