@@ -16,10 +16,10 @@ import { INITIAL_TRANSACTIONS } from './data/dummyTransactions';
 import { getRemainingDaysInMonth, formatTime, formatIndonesianDate } from './utils/formatters';
 import { supabase } from './supabaseClient';
 
-const STORAGE_KEY_SETUP = 'catatkeuangan_setup_v14';
-const STORAGE_KEY_BUDGET = 'catatkeuangan_budget_v14';
+const getUserSetupKey = (uid) => `catat_setup_${uid || 'guest'}`;
+const getUserBudgetKey = (uid) => `catat_budget_${uid || 'guest'}`;
+const getUserProfileKey = (uid) => `catat_user_${uid || 'guest'}`;
 const STORAGE_KEY_TXS = 'catatkeuangan_txs_v14';
-const STORAGE_KEY_USER = 'catatkeuangan_user_v14';
 const STORAGE_KEY_IMAGE = 'catatkeuangan_avatar_v14';
 
 function MainApp() {
@@ -32,24 +32,12 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState('beranda');
 
   // 3. Onboarding Setup State (Default: false)
-  const [isSetupComplete, setIsSetupComplete] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_SETUP);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return false;
-  });
+  const [isSetupComplete, setIsSetupComplete] = useState(false);
 
   // 4. User Profile State
-  const [userProfile, setUserProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_USER);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      name: 'Rizko Juli Afriyanto',
-      bio: 'Mahasiswa Informatika, Universitas Amikom Purwokerto',
-    };
+  const [userProfile, setUserProfile] = useState({
+    name: 'Rizko Juli Afriyanto',
+    bio: 'Mahasiswa Informatika, Universitas Amikom Purwokerto',
   });
 
   // 5. Profile Image State (Default: null)
@@ -61,15 +49,9 @@ function MainApp() {
   });
 
   // 6. Budget State: Default Semuanya NOL (0)
-  const [budget, setBudget] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_BUDGET);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      monthlyIncome: 0,
-      savingsTarget: 0,
-    };
+  const [budget, setBudget] = useState({
+    monthlyIncome: 0,
+    savingsTarget: 0,
   });
 
   // 7. Transactions State: Default Kosong []
@@ -84,6 +66,29 @@ function MainApp() {
   // 8. Modal Catat Transaksi Controls
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
 
+  // Helper untuk memuat cache instan berdasarkan user ID
+  const applyCachedUserData = useCallback((user) => {
+    if (!user?.id) return;
+    try {
+      const savedSetup = localStorage.getItem(getUserSetupKey(user.id));
+      if (savedSetup === 'true' || savedSetup === true) {
+        setIsSetupComplete(true);
+      }
+      const savedBudget = localStorage.getItem(getUserBudgetKey(user.id));
+      if (savedBudget) {
+        const parsed = JSON.parse(savedBudget);
+        if (parsed && (parsed.monthlyIncome > 0 || parsed.savingsTarget > 0)) {
+          setBudget(parsed);
+          setIsSetupComplete(true);
+        }
+      }
+      const savedProfile = localStorage.getItem(getUserProfileKey(user.id));
+      if (savedProfile) {
+        setUserProfile(JSON.parse(savedProfile));
+      }
+    } catch (e) {}
+  }, []);
+
   // ============================================================================
   // SUPABASE AUTH: Pantau Status Login Pengguna (onAuthStateChange & getSession)
   // ============================================================================
@@ -92,6 +97,7 @@ function MainApp() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setCurrentUser(session.user);
+        applyCachedUserData(session.user);
         if (session.user.user_metadata?.name) {
           setUserProfile((prev) => ({
             ...prev,
@@ -106,6 +112,9 @@ function MainApp() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const user = session?.user || null;
       setCurrentUser(user);
+      if (user) {
+        applyCachedUserData(user);
+      }
       if (user?.user_metadata?.name) {
         setUserProfile((prev) => ({
           ...prev,
@@ -117,20 +126,7 @@ function MainApp() {
     return () => {
       subscription?.unsubscribe();
     };
-  }, []);
-
-  // Sync state to localStorage safely
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_SETUP, JSON.stringify(isSetupComplete));
-    } catch (e) {}
-  }, [isSetupComplete]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(userProfile));
-    } catch (e) {}
-  }, [userProfile]);
+  }, [applyCachedUserData]);
 
   useEffect(() => {
     try {
@@ -141,12 +137,6 @@ function MainApp() {
       }
     } catch (e) {}
   }, [profileImage]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_BUDGET, JSON.stringify(budget));
-    } catch (e) {}
-  }, [budget]);
 
   useEffect(() => {
     try {
@@ -162,25 +152,40 @@ function MainApp() {
     if (!uid) return;
 
     try {
+      let profileData = null;
+
+      // 1. Coba cari berdasarkan user_id spesifik
       const { data, error } = await supabase
         .from('user_profile')
         .select('*')
         .eq('user_id', uid)
         .maybeSingle();
 
-      if (error) {
-        console.warn('Info mengambil user_profile dari Supabase:', error.message);
-      } else if (data) {
-        const income = Number(data.monthly_income) || 0;
-        const savings = Number(data.savings_target) || 0;
-        const isComplete = data.is_setup_complete !== undefined && data.is_setup_complete !== null
-          ? Boolean(data.is_setup_complete)
+      if (!error && data) {
+        profileData = data;
+      } else {
+        // 2. Fallback: jika tabel memakai id = 1 atau belum ada kolom user_id
+        const { data: fallbackData } = await supabase
+          .from('user_profile')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+        if (fallbackData) {
+          profileData = fallbackData;
+        }
+      }
+
+      if (profileData) {
+        const income = Number(profileData.monthly_income) || 0;
+        const savings = Number(profileData.savings_target) || 0;
+        const isComplete = profileData.is_setup_complete !== undefined && profileData.is_setup_complete !== null
+          ? Boolean(profileData.is_setup_complete)
           : (income > 0 || savings > 0);
 
         setUserProfile((prev) => ({
           ...prev,
-          name: data.name || currentUser?.user_metadata?.name || prev.name,
-          bio: data.bio || prev.bio,
+          name: profileData.name || currentUser?.user_metadata?.name || prev.name,
+          bio: profileData.bio || prev.bio,
         }));
 
         setBudget({
@@ -188,15 +193,18 @@ function MainApp() {
           savingsTarget: savings,
         });
 
-        setIsSetupComplete(isComplete);
+        if (isComplete) {
+          setIsSetupComplete(true);
+        }
+
         try {
-          localStorage.setItem(STORAGE_KEY_SETUP, JSON.stringify(isComplete));
+          localStorage.setItem(getUserSetupKey(uid), JSON.stringify(isComplete));
+          localStorage.setItem(getUserBudgetKey(uid), JSON.stringify({ monthlyIncome: income, savingsTarget: savings }));
+          localStorage.setItem(getUserProfileKey(uid), JSON.stringify({
+            name: profileData.name || currentUser?.user_metadata?.name || 'Rizko',
+            bio: profileData.bio || '',
+          }));
         } catch (e) {}
-      } else if (currentUser?.user_metadata?.name) {
-        setUserProfile((prev) => ({
-          ...prev,
-          name: currentUser.user_metadata.name,
-        }));
       }
     } catch (err) {
       console.error('Exception saat fetch user_profile:', err);
@@ -222,34 +230,49 @@ function MainApp() {
         updatePayload.bio = bio;
       }
 
-      // Check if profile exists for this user_id
-      const { data: existing, error: checkErr } = await supabase
+      // 1. Simpan di cache lokal terlebih dahulu agar selalu instan
+      try {
+        localStorage.setItem(getUserSetupKey(currentUser.id), 'true');
+        localStorage.setItem(getUserBudgetKey(currentUser.id), JSON.stringify({
+          monthlyIncome: updatePayload.monthly_income,
+          savingsTarget: updatePayload.savings_target,
+        }));
+        localStorage.setItem(getUserProfileKey(currentUser.id), JSON.stringify({
+          name: updatePayload.name,
+          bio: updatePayload.bio || userProfile.bio,
+        }));
+      } catch (e) {}
+
+      // 2. Simpan ke database Supabase
+      let isSuccess = false;
+      const { data: existing } = await supabase
         .from('user_profile')
         .select('id')
         .eq('user_id', currentUser.id)
         .maybeSingle();
 
       if (existing?.id) {
-        // Update existing row
         const { error: updateErr } = await supabase
           .from('user_profile')
           .update(updatePayload)
           .eq('user_id', currentUser.id);
-
-        if (updateErr) {
-          console.warn('Gagal update user_profile:', updateErr.message);
-        }
+        if (!updateErr) isSuccess = true;
       } else {
-        // Insert new row
         const { error: insertErr } = await supabase
           .from('user_profile')
           .insert([updatePayload]);
+        if (!insertErr) isSuccess = true;
+      }
 
-        if (insertErr) {
-          console.warn('Gagal insert user_profile:', insertErr.message);
-          // Fallback: try upsert
-          await supabase.from('user_profile').upsert(updatePayload, { onConflict: 'user_id' });
-        }
+      // Fallback: Jika skema lama di Supabase belum ada kolom user_id, update by id: 1
+      if (!isSuccess) {
+        const fallbackPayload = {
+          name: updatePayload.name,
+          monthly_income: updatePayload.monthly_income,
+          savings_target: updatePayload.savings_target,
+          is_setup_complete: updatePayload.is_setup_complete,
+        };
+        await supabase.from('user_profile').update(fallbackPayload).eq('id', 1);
       }
     } catch (err) {
       console.error('Exception saat update user_profile di Supabase:', err);
@@ -455,6 +478,9 @@ function MainApp() {
   // Handler: Login / Register Berhasil
   const handleLoginSuccess = (userAuth) => {
     setCurrentUser(userAuth);
+    if (userAuth) {
+      applyCachedUserData(userAuth);
+    }
     if (userAuth?.user_metadata?.name) {
       setUserProfile((prev) => ({
         ...prev,
@@ -472,25 +498,25 @@ function MainApp() {
     } catch (e) {
       console.error('Sign out error:', e);
     }
-    // Bersihkan seluruh state lokal & local storage
+    // Bersihkan seluruh state aktif memori
     setCurrentUser(null);
     setTransactions([]);
     setBudget({ monthlyIncome: 0, savingsTarget: 0 });
     setIsSetupComplete(false);
     setProfileImage(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY_SETUP);
-      localStorage.removeItem(STORAGE_KEY_BUDGET);
-      localStorage.removeItem(STORAGE_KEY_TXS);
-      localStorage.removeItem(STORAGE_KEY_USER);
-      localStorage.removeItem(STORAGE_KEY_IMAGE);
-    } catch (e) {}
   };
 
   // Handler: Selesaikan Setup Awal Onboarding (Simpan ke Supabase)
   const handleCompleteSetup = async (newBudget) => {
     setBudget(newBudget);
     setIsSetupComplete(true);
+
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem(getUserSetupKey(currentUser.id), 'true');
+        localStorage.setItem(getUserBudgetKey(currentUser.id), JSON.stringify(newBudget));
+      } catch (e) {}
+    }
 
     await updateUserProfileInSupabase({
       name: userProfile.name,
