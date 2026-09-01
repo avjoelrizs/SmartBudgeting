@@ -14,7 +14,7 @@ import {
   TrendingDown,
   TrendingUp
 } from 'lucide-react';
-import { formatTime } from '../utils/formatters';
+import { formatTime, formatNumberWithDots, parseNumberFromDots } from '../utils/formatters';
 import confetti from 'canvas-confetti';
 
 // Kategori Pengeluaran
@@ -66,7 +66,7 @@ export const TransactionModal = ({ isOpen, onClose, onAddTransaction }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const numAmount = parseInt(amount, 10);
+    const numAmount = parseNumberFromDots(amount);
     if (!numAmount || numAmount <= 0) {
       alert('Silakan masukkan nominal yang valid');
       return;
@@ -190,7 +190,7 @@ export const TransactionModal = ({ isOpen, onClose, onAddTransaction }) => {
             </div>
           </div>
 
-          {/* 2. Nominal Input */}
+          {/* 2. Nominal Input dengan Pemisah Titik Ribuan Otomatis */}
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
               Nominal {type === 'expense' ? 'Pengeluaran' : 'Pemasukan'}
@@ -200,12 +200,11 @@ export const TransactionModal = ({ isOpen, onClose, onAddTransaction }) => {
                 Rp
               </span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
                 placeholder="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(formatNumberWithDots(e.target.value))}
                 className="w-full bg-transparent text-2xl sm:text-3xl font-bold font-mono text-slate-100 placeholder-slate-600 focus:outline-none border-none tracking-tight"
                 required
                 autoFocus
@@ -218,7 +217,11 @@ export const TransactionModal = ({ isOpen, onClose, onAddTransaction }) => {
                 <button
                   key={amt}
                   type="button"
-                  onClick={() => setAmount(String(amt))}
+                  onClick={() => {
+                    const currentNum = parseNumberFromDots(amount);
+                    const nextNum = currentNum > 0 ? currentNum + amt : amt;
+                    setAmount(formatNumberWithDots(nextNum));
+                  }}
                   className="px-2.5 py-1 text-xs font-semibold font-mono rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer"
                 >
                   +{amt >= 1000 ? `${amt / 1000}k` : amt}

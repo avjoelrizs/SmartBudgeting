@@ -30,6 +30,30 @@ export const formatRupiah = (amount, { showPrefix = true, showSign = false, type
 };
 
 /**
+ * Format a raw number or input string with thousands dot separators (e.g. 50000 -> "50.000")
+ * @param {string|number} value 
+ * @returns {string}
+ */
+export const formatNumberWithDots = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+  const cleanNum = String(value).replace(/\D/g, '');
+  if (!cleanNum) return '';
+  return cleanNum.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+/**
+ * Parse a dot-formatted string back to a clean number (e.g. "50.000" -> 50000)
+ * @param {string|number} value 
+ * @returns {number}
+ */
+export const parseNumberFromDots = (value) => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  const clean = String(value).replace(/\D/g, '');
+  return parseInt(clean, 10) || 0;
+};
+
+/**
  * Format date to full Indonesian formatted date string safely
  * @param {Date|string} date 
  * @returns {string}

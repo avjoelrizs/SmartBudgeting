@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Wallet, ShieldCheck, ArrowRight, CheckCircle2, Sparkles, PiggyBank, Lock } from 'lucide-react';
-import { formatRupiah } from '../utils/formatters';
+import { formatRupiah, formatNumberWithDots, parseNumberFromDots } from '../utils/formatters';
 import confetti from 'canvas-confetti';
 
 export const WelcomeSetup = ({ onCompleteSetup }) => {
   const [income, setIncome] = useState('');
   const [savings, setSavings] = useState('');
 
-  const numIncome = parseInt(income, 10) || 0;
-  const numSavings = parseInt(savings, 10) || 0;
+  const numIncome = parseNumberFromDots(income);
+  const numSavings = parseNumberFromDots(savings);
   const maxSpendingBudget = Math.max(0, numIncome - numSavings);
 
   const isValid = numIncome > 0 && numSavings < numIncome;
@@ -80,12 +80,11 @@ export const WelcomeSetup = ({ onCompleteSetup }) => {
                 Rp
               </span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Contoh: 2000000"
+                placeholder="Contoh: 2.000.000"
                 value={income}
-                onChange={(e) => setIncome(e.target.value)}
+                onChange={(e) => setIncome(formatNumberWithDots(e.target.value))}
                 className="w-full bg-transparent text-xl sm:text-2xl font-bold font-mono text-slate-100 placeholder-slate-600 focus:outline-none border-none tracking-tight"
                 required
                 autoFocus
@@ -98,7 +97,7 @@ export const WelcomeSetup = ({ onCompleteSetup }) => {
                 <button
                   key={preset}
                   type="button"
-                  onClick={() => setIncome(String(preset))}
+                  onClick={() => setIncome(formatNumberWithDots(preset))}
                   className="px-2.5 py-1 text-xs font-semibold font-mono rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer"
                 >
                   {formatRupiah(preset)}
@@ -123,12 +122,11 @@ export const WelcomeSetup = ({ onCompleteSetup }) => {
                 Rp
               </span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Contoh: 500000"
+                placeholder="Contoh: 500.000"
                 value={savings}
-                onChange={(e) => setSavings(e.target.value)}
+                onChange={(e) => setSavings(formatNumberWithDots(e.target.value))}
                 className="w-full bg-transparent text-xl sm:text-2xl font-bold font-mono text-slate-100 placeholder-slate-600 focus:outline-none border-none tracking-tight"
               />
             </div>
@@ -142,7 +140,7 @@ export const WelcomeSetup = ({ onCompleteSetup }) => {
                   type="button"
                   onClick={() => {
                     if (numIncome > 0) {
-                      setSavings(String(Math.floor(numIncome * (pct / 100))));
+                      setSavings(formatNumberWithDots(Math.floor(numIncome * (pct / 100))));
                     }
                   }}
                   className="px-2 py-0.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"

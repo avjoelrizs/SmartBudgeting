@@ -9,24 +9,24 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
-import { formatRupiah } from '../../utils/formatters';
+import { formatRupiah, formatNumberWithDots, parseNumberFromDots } from '../../utils/formatters';
 import confetti from 'canvas-confetti';
 
 export const Dompet = ({ budget, onSaveBudget, sisaAnggaran = 0 }) => {
-  const [income, setIncome] = useState(budget?.monthlyIncome || 2000000);
-  const [savings, setSavings] = useState(budget?.savingsTarget || 500000);
+  const [income, setIncome] = useState(formatNumberWithDots(budget?.monthlyIncome || 2000000));
+  const [savings, setSavings] = useState(formatNumberWithDots(budget?.savingsTarget || 500000));
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Sync state when budget prop changes
   useEffect(() => {
     if (budget) {
-      setIncome(budget.monthlyIncome || 2000000);
-      setSavings(budget.savingsTarget || 500000);
+      setIncome(formatNumberWithDots(budget.monthlyIncome || 2000000));
+      setSavings(formatNumberWithDots(budget.savingsTarget || 500000));
     }
   }, [budget]);
 
-  const numIncome = parseInt(income, 10) || 0;
-  const numSavings = parseInt(savings, 10) || 0;
+  const numIncome = parseNumberFromDots(income);
+  const numSavings = parseNumberFromDots(savings);
   // Anggaran Maksimal Jajan = Pemasukan - Target Tabungan
   const maxSpendingBudget = Math.max(0, numIncome - numSavings);
 
@@ -134,12 +134,11 @@ export const Dompet = ({ budget, onSaveBudget, sisaAnggaran = 0 }) => {
                 Rp
               </span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="2000000"
+                placeholder="2.000.000"
                 value={income}
-                onChange={(e) => setIncome(e.target.value)}
+                onChange={(e) => setIncome(formatNumberWithDots(e.target.value))}
                 className="w-full bg-transparent text-2xl sm:text-3xl font-bold font-mono text-slate-100 placeholder-slate-600 focus:outline-none border-none tracking-tight"
                 required
               />
@@ -151,7 +150,7 @@ export const Dompet = ({ budget, onSaveBudget, sisaAnggaran = 0 }) => {
                 <button
                   key={preset}
                   type="button"
-                  onClick={() => setIncome(String(preset))}
+                  onClick={() => setIncome(formatNumberWithDots(preset))}
                   className="px-2.5 py-1 text-xs font-semibold font-mono rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer"
                 >
                   {formatRupiah(preset)}
@@ -176,12 +175,11 @@ export const Dompet = ({ budget, onSaveBudget, sisaAnggaran = 0 }) => {
                 Rp
               </span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="500000"
+                placeholder="500.000"
                 value={savings}
-                onChange={(e) => setSavings(e.target.value)}
+                onChange={(e) => setSavings(formatNumberWithDots(e.target.value))}
                 className="w-full bg-transparent text-2xl sm:text-3xl font-bold font-mono text-slate-100 placeholder-slate-600 focus:outline-none border-none tracking-tight"
                 required
               />
@@ -196,7 +194,7 @@ export const Dompet = ({ budget, onSaveBudget, sisaAnggaran = 0 }) => {
                   type="button"
                   onClick={() => {
                     if (numIncome > 0) {
-                      setSavings(String(Math.floor(numIncome * (pct / 100))));
+                      setSavings(formatNumberWithDots(Math.floor(numIncome * (pct / 100))));
                     }
                   }}
                   className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
