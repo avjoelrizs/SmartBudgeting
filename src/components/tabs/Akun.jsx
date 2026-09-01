@@ -45,7 +45,7 @@ export const Akun = ({
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // 1. Unggah Foto Profil dengan Kompresi Otomatis (Max 256x256 ~20KB) untuk Sinkronisasi Cepat & Aman
+  // 1. Unggah Foto Profil dengan Kompresi Ultra-Compact (128x128 ~5KB) agar 100% lolos ke Cloud Database
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -54,7 +54,7 @@ export const Akun = ({
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_SIZE = 256;
+          const MAX_SIZE = 128;
           let width = img.width;
           let height = img.height;
 
@@ -75,8 +75,8 @@ export const Akun = ({
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Convert to lightweight JPEG format (~20KB)
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+          // Convert to ultra-lightweight JPEG format (~5KB)
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
 
           if (onUpdateProfileImage) {
             onUpdateProfileImage(compressedBase64);
