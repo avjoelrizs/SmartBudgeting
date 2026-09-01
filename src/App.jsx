@@ -76,7 +76,19 @@ function MainApp() {
           setBudget(parsed);
           setIsSetupComplete(true);
         }
+      } else if (Number(user.user_metadata?.monthly_income) > 0 || Number(user.user_metadata?.savings_target) > 0) {
+        const metaBudget = {
+          monthlyIncome: Number(user.user_metadata.monthly_income) || 0,
+          savingsTarget: Number(user.user_metadata.savings_target) || 0,
+        };
+        setBudget(metaBudget);
+        setIsSetupComplete(true);
+        try {
+          localStorage.setItem(getUserBudgetKey(user.id), JSON.stringify(metaBudget));
+          localStorage.setItem(getUserSetupKey(user.id), 'true');
+        } catch (e) {}
       }
+
       const savedProfile = localStorage.getItem(getUserProfileKey(user.id));
       if (savedProfile) {
         setUserProfile(JSON.parse(savedProfile));
@@ -177,8 +189,8 @@ function MainApp() {
       }
 
       if (profileData) {
-        const income = Number(profileData.monthly_income) || 0;
-        const savings = Number(profileData.savings_target) || 0;
+        const income = Number(profileData.monthly_income) || Number(currentUser?.user_metadata?.monthly_income) || 0;
+        const savings = Number(profileData.savings_target) || Number(currentUser?.user_metadata?.savings_target) || 0;
         const isComplete = profileData.is_setup_complete !== undefined && profileData.is_setup_complete !== null
           ? Boolean(profileData.is_setup_complete)
           : (income > 0 || savings > 0);
@@ -189,13 +201,19 @@ function MainApp() {
           bio: profileData.bio || prev.bio,
         }));
 
-        setBudget({
-          monthlyIncome: income,
-          savingsTarget: savings,
-        });
+        // Hanya timpa budget jika server memiliki nilai > 0
+        if (income > 0 || savings > 0) {
+          setBudget({
+            monthlyIncome: income,
+            savingsTarget: savings,
+          });
+          try {
+            localStorage.setItem(getUserBudgetKey(uid), JSON.stringify({ monthlyIncome: income, savingsTarget: savings }));
+          } catch (e) {}
+        }
 
         // Muat foto profil kustom yang pernah diunggah pengguna ke Supabase
-        const customAvatar = profileData.avatar_url || profileData.avatar || null;
+        const customAvatar = profileData.avatar_url || profileData.avatar || currentUser?.user_metadata?.avatar_url || null;
         if (customAvatar) {
           setProfileImage(customAvatar);
           try {
@@ -209,7 +227,6 @@ function MainApp() {
 
         try {
           localStorage.setItem(getUserSetupKey(uid), JSON.stringify(isComplete));
-          localStorage.setItem(getUserBudgetKey(uid), JSON.stringify({ monthlyIncome: income, savingsTarget: savings }));
           localStorage.setItem(getUserProfileKey(uid), JSON.stringify({
             name: profileData.name || currentUser?.user_metadata?.name || 'Rizko',
             bio: profileData.bio || '',
@@ -548,6 +565,16 @@ function MainApp() {
         localStorage.setItem(getUserSetupKey(currentUser.id), 'true');
         localStorage.setItem(getUserBudgetKey(currentUser.id), JSON.stringify(newBudget));
       } catch (e) {}
+
+      // Simpan ke Supabase Auth User Metadata (Pasti Aman & Lintas Perangkat)
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            monthly_income: newBudget.monthlyIncome,
+            savings_target: newBudget.savingsTarget,
+          },
+        });
+      } catch (e) {}
     }
 
     await updateUserProfileInSupabase({
@@ -561,6 +588,23 @@ function MainApp() {
   // Handler: Simpan / Edit Budget dari Dompet.jsx (Simpan ke Supabase)
   const handleSaveBudget = async (newBudget) => {
     setBudget(newBudget);
+
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem(getUserSetupKey(currentUser.id), 'true');
+        localStorage.setItem(getUserBudgetKey(currentUser.id), JSON.stringify(newBudget));
+      } catch (e) {}
+
+      // Simpan ke Supabase Auth User Metadata (Pasti Aman & Lintas Perangkat)
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            monthly_income: newBudget.monthlyIncome,
+            savings_target: newBudget.savingsTarget,
+          },
+        });
+      } catch (e) {}
+    }
 
     await updateUserProfileInSupabase({
       name: userProfile.name,
