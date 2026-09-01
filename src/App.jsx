@@ -253,27 +253,33 @@ function MainApp() {
         }
       } catch (e) {}
 
-      // 2. Simpan ke database Supabase dengan berbagai skema
+      // 2. Simpan ke database Supabase secara pasti
       let isSuccess = false;
 
-      // Coba upsert dengan user_id
-      const { error: upsertErr } = await supabase
+      // Cek apakah sudah ada baris profil untuk user_id ini
+      const { data: existingRows } = await supabase
         .from('user_profile')
-        .upsert(updatePayload, { onConflict: 'user_id' });
+        .select('id')
+        .eq('user_id', currentUser.id);
 
-      if (!upsertErr) {
-        isSuccess = true;
-      } else {
-        // Coba update by user_id
+      if (existingRows && existingRows.length > 0) {
+        // Baris sudah ada -> Lakukan UPDATE
         const { error: updateErr } = await supabase
           .from('user_profile')
           .update(updatePayload)
           .eq('user_id', currentUser.id);
 
         if (!updateErr) isSuccess = true;
+      } else {
+        // Baris belum ada -> Lakukan INSERT baris baru
+        const { error: insertErr } = await supabase
+          .from('user_profile')
+          .insert([updatePayload]);
+
+        if (!insertErr) isSuccess = true;
       }
 
-      // Fallback: update tabel default row (id = 1) jika tabel belum disesuaikan per user_id
+      // Fallback: Jika tabel Supabase memakai skema id = 1 lama
       if (!isSuccess) {
         const fallbackPayload = {
           name: updatePayload.name,
@@ -282,7 +288,7 @@ function MainApp() {
           is_setup_complete: updatePayload.is_setup_complete,
           avatar_url: updatePayload.avatar_url || '',
         };
-        await supabase.from('user_profile').upsert({ id: 1, ...fallbackPayload });
+        await supabase.from('user_profile').update(fallbackPayload).eq('id', 1);
       }
     } catch (err) {
       console.error('Exception saat update user_profile di Supabase:', err);
