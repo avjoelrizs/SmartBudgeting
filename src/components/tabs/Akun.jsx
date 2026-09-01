@@ -45,22 +45,45 @@ export const Akun = ({
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // 1. Unggah Foto Profil Menggunakan FileReader (readAsDataURL)
+  // 1. Unggah Foto Profil dengan Kompresi Otomatis (Max 256x256 ~20KB) untuk Sinkronisasi Cepat & Aman
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Limit to 3MB
-      if (file.size > 3 * 1024 * 1024) {
-        alert('Ukuran file foto maksimal 3MB');
-        return;
-      }
-
       const reader = new FileReader();
-      reader.onloadend = () => {
-        if (onUpdateProfileImage) {
-          onUpdateProfileImage(reader.result);
-          triggerToast('Foto profil berhasil diperbarui!');
-        }
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 256;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to lightweight JPEG format (~20KB)
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+
+          if (onUpdateProfileImage) {
+            onUpdateProfileImage(compressedBase64);
+            triggerToast('Foto profil berhasil diunggah & disinkronkan!');
+          }
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
