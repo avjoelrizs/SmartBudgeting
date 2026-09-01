@@ -147,7 +147,7 @@ export const Akun = ({
       ];
     });
 
-    const csvString = [headers.join(','), ...rows.map((row) => row.join(','))].join('\r\n');
+    const csvString = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\r\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     
