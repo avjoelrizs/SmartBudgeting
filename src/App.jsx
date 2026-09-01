@@ -61,10 +61,6 @@ function MainApp() {
   // 8. Modal Catat Transaksi Controls
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
 
-  // Computed Avatar: Prioritaskan Custom Upload, Fallback ke Google Avatar Foto Resmi
-  const googleAvatar = currentUser?.user_metadata?.avatar_url || currentUser?.user_metadata?.picture || null;
-  const effectiveProfileImage = profileImage || googleAvatar;
-
   // Helper untuk memuat cache instan berdasarkan user ID
   const applyCachedUserData = useCallback((user) => {
     if (!user?.id) return;
@@ -190,6 +186,15 @@ function MainApp() {
           savingsTarget: savings,
         });
 
+        // Muat foto profil kustom yang pernah diunggah pengguna ke Supabase
+        const customAvatar = profileData.avatar_url || profileData.avatar || null;
+        if (customAvatar) {
+          setProfileImage(customAvatar);
+          try {
+            localStorage.setItem(getUserAvatarKey(uid), customAvatar);
+          } catch (e) {}
+        }
+
         if (isComplete) {
           setIsSetupComplete(true);
         }
@@ -211,7 +216,7 @@ function MainApp() {
   // ============================================================================
   // SUPABASE: Simpan / Update User Profile (Multi-User by user_id)
   // ============================================================================
-  const updateUserProfileInSupabase = async ({ name, monthly_income, savings_target, is_setup_complete, bio }) => {
+  const updateUserProfileInSupabase = async ({ name, monthly_income, savings_target, is_setup_complete, bio, avatar_url }) => {
     if (!currentUser?.id) return;
 
     try {
@@ -226,6 +231,11 @@ function MainApp() {
       if (bio !== undefined) {
         updatePayload.bio = bio;
       }
+      if (avatar_url !== undefined) {
+        updatePayload.avatar_url = avatar_url;
+      } else if (profileImage) {
+        updatePayload.avatar_url = profileImage;
+      }
 
       // 1. Simpan di cache lokal terlebih dahulu agar selalu instan
       try {
@@ -238,6 +248,9 @@ function MainApp() {
           name: updatePayload.name,
           bio: updatePayload.bio || userProfile.bio,
         }));
+        if (updatePayload.avatar_url) {
+          localStorage.setItem(getUserAvatarKey(currentUser.id), updatePayload.avatar_url);
+        }
       } catch (e) {}
 
       // 2. Simpan ke database Supabase dengan berbagai skema
@@ -267,6 +280,7 @@ function MainApp() {
           monthly_income: updatePayload.monthly_income,
           savings_target: updatePayload.savings_target,
           is_setup_complete: updatePayload.is_setup_complete,
+          avatar_url: updatePayload.avatar_url || '',
         };
         await supabase.from('user_profile').upsert({ id: 1, ...fallbackPayload });
       }
@@ -657,7 +671,7 @@ function MainApp() {
           <div className="pb-4 sm:pb-5 border-b border-slate-800 mb-6">
             <Header 
               userName={userProfile?.name ? (userProfile.name.split(' ')[0] || userProfile.name) : (currentUser?.email?.split('@')[0] || 'Rizko')}
-              profileImage={effectiveProfileImage}
+              profileImage={profileImage}
             />
           </div>
 
@@ -707,7 +721,7 @@ function MainApp() {
             <Akun 
               userProfile={userProfile}
               onUpdateProfile={handleUpdateProfile}
-              profileImage={effectiveProfileImage}
+              profileImage={profileImage}
               onUpdateProfileImage={handleUpdateProfileImage}
               transactions={transactions}
               onLoadDemoData={handleLoadDemoData}
