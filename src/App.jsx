@@ -572,6 +572,30 @@ function MainApp() {
       savings_target: budget.savingsTarget,
       is_setup_complete: isSetupComplete,
       bio: newProfile.bio,
+      avatar_url: profileImage || '',
+    });
+  };
+
+  // Handler: Update Foto Profil (Simpan ke Cache & Cloud Supabase)
+  const handleUpdateProfileImage = async (newImage) => {
+    setProfileImage(newImage);
+    if (currentUser?.id) {
+      try {
+        if (newImage) {
+          localStorage.setItem(getUserAvatarKey(currentUser.id), newImage);
+        } else {
+          localStorage.removeItem(getUserAvatarKey(currentUser.id));
+        }
+      } catch (e) {}
+    }
+
+    await updateUserProfileInSupabase({
+      name: userProfile.name,
+      monthly_income: budget.monthlyIncome,
+      savings_target: budget.savingsTarget,
+      is_setup_complete: isSetupComplete,
+      bio: userProfile.bio,
+      avatar_url: newImage || '',
     });
   };
 
