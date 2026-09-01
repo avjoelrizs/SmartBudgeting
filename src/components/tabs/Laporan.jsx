@@ -10,9 +10,11 @@ import {
   CircleDollarSign,
   PieChart as PieChartIcon,
   Wallet,
-  ReceiptText,
-  TrendingDown,
-  Sparkles
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Scale
 } from 'lucide-react';
 import { CATEGORIES } from '../../data/dummyTransactions';
 import { formatRupiah } from '../../utils/formatters';
@@ -27,6 +29,11 @@ const ICON_MAP = {
   CircleDollarSign,
   Wallet,
 };
+
+const MONTH_NAMES_ID = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
 
 // Palet warna cerah & harmonis untuk masing-masing kategori
 const CATEGORY_COLORS = {
@@ -48,29 +55,112 @@ export const Laporan = ({
 }) => {
   const [hoveredCategory, setHoveredCategory] = useState(null);
 
-  // Total Pemasukan
+  // Kunci bulan saat ini (contoh: '2026-09')
+  const currentMonthKey = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
+
+  // Daftar bulan yang tersedia dari riwayat transaksi
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set();
+    monthSet.add(currentMonthKey);
+
+    if (Array.isArray(transactions)) {
+      transactions.forEach((tx) => {
+        if (tx?.date) {
+          const d = new Date(tx.date);
+          if (!isNaN(d.getTime())) {
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            monthSet.add(key);
+          }
+        }
+      });
+    }
+
+    // Urutkan dari bulan terbaru ke terlama
+    return Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+  }, [transactions, currentMonthKey]);
+
+  // Helper format label bulan (contoh: '2026-09' -> 'September 2026')
+  const formatMonthLabel = (key) => {
+    if (key === 'all') return 'Semua Waktu';
+    const [year, month] = key.split('-');
+    const monthIndex = parseInt(month, 10) - 1;
+    return `${MONTH_NAMES_ID[monthIndex] || month} ${year}`;
+  };
+
+  // Navigasi bulan (Sebelumnya & Selanjutnya)
+  const handlePrevMonth = () => {
+    if (selectedMonth === 'all') {
+      setSelectedMonth(availableMonths[0] || currentMonthKey);
+      return;
+    }
+    const [year, month] = selectedMonth.split('-').map(Number);
+    let prevYear = year;
+    let prevMonth = month - 1;
+    if (prevMonth < 1) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+    setSelectedMonth(prevKey);
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 'all') return;
+    const [year, month] = selectedMonth.split('-').map(Number);
+    let nextYear = year;
+    let nextMonth = month + 1;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    const nextKey = `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+    setSelectedMonth(nextKey);
+  };
+
+  // Filter transaksi berdasarkan bulan yang dipilih
+  const filteredTransactions = useMemo(() => {
+    if (selectedMonth === 'all') return transactions;
+    return transactions.filter((tx) => {
+      if (!tx?.date) return false;
+      const d = new Date(tx.date);
+      if (isNaN(d.getTime())) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return key === selectedMonth;
+    });
+  }, [transactions, selectedMonth]);
+
+  // Total Pemasukan untuk bulan yang dipilih
   const calculatedIncome = useMemo(() => {
     try {
       let incomeFromTxs = 0;
-      if (Array.isArray(transactions)) {
-        transactions.forEach((tx) => {
+      if (Array.isArray(filteredTransactions)) {
+        filteredTransactions.forEach((tx) => {
           if (tx && tx.type === 'income') {
             incomeFromTxs += Number(tx.amount) || 0;
           }
         });
       }
-      return (Number(budget?.monthlyIncome) || 0) + incomeFromTxs;
+      // Tambahkan alokasi budget bulanan jika bulan yang dipilih adalah bulan sekarang
+      const baseMonthlyBudget = (selectedMonth === currentMonthKey || selectedMonth === 'all') 
+        ? (Number(budget?.monthlyIncome) || 0) 
+        : 0;
+      return baseMonthlyBudget + incomeFromTxs;
     } catch (e) {
       return Number(budget?.monthlyIncome) || 0;
     }
-  }, [transactions, budget]);
+  }, [filteredTransactions, budget, selectedMonth, currentMonthKey]);
 
-  // Total Pengeluaran
+  // Total Pengeluaran untuk bulan yang dipilih
   const calculatedExpense = useMemo(() => {
     try {
       let sum = 0;
-      if (Array.isArray(transactions)) {
-        transactions.forEach((tx) => {
+      if (Array.isArray(filteredTransactions)) {
+        filteredTransactions.forEach((tx) => {
           if (tx && tx.type === 'expense') {
             sum += Number(tx.amount) || 0;
           }
@@ -80,15 +170,18 @@ export const Laporan = ({
     } catch (e) {
       return 0;
     }
-  }, [transactions]);
+  }, [filteredTransactions]);
 
-  // Kalkulasi Breakdown Kategori
+  // Sisa Bersih (Net Balance)
+  const netBalance = calculatedIncome - calculatedExpense;
+
+  // Kalkulasi Breakdown Kategori untuk bulan yang dipilih
   const categoryBreakdown = useMemo(() => {
     try {
       const map = {};
 
-      if (Array.isArray(transactions)) {
-        transactions.forEach((tx) => {
+      if (Array.isArray(filteredTransactions)) {
+        filteredTransactions.forEach((tx) => {
           if (tx && tx.type === 'expense') {
             const rawCat = tx.category ? String(tx.category).toLowerCase().trim() : 'other';
             const catKey = CATEGORIES[rawCat] ? rawCat : 'other';
@@ -134,7 +227,7 @@ export const Laporan = ({
       console.error('Error calculating category breakdown:', err);
       return [];
     }
-  }, [transactions, calculatedExpense]);
+  }, [filteredTransactions, calculatedExpense]);
 
   // Radius dan Keliling Lingkaran Pie Chart Donut
   const radius = 68;
@@ -162,62 +255,147 @@ export const Laporan = ({
   return (
     <div className="w-full space-y-6">
       
-      {/* 1. Ringkasan Pemasukan & Pengeluaran */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* 1. Header Filter Periode Bulan */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
         
-        {/* Kartu 1: Total Pemasukan Bulan Ini (Hijau) */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+        {/* Judul & Periode Aktif */}
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-100 leading-tight">
+              Laporan Keuangan Bulanan
+            </h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Periode: <span className="text-emerald-400 font-semibold">{formatMonthLabel(selectedMonth)}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Kontrol Navigasi Bulan */}
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          
+          {/* Tombol Bulan Sebelumnya */}
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer active:scale-95"
+            title="Bulan Sebelumnya"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Dropdown Pilihan Bulan */}
+          <div className="relative flex-1 sm:flex-initial">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full sm:w-auto appearance-none bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700/80 rounded-xl px-4 py-2 pr-8 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+            >
+              {availableMonths.map((mKey) => (
+                <option key={mKey} value={mKey}>
+                  {formatMonthLabel(mKey)} {mKey === currentMonthKey ? '(Bulan Ini)' : ''}
+                </option>
+              ))}
+              <option value="all">Semua Waktu (Lifetime)</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
+              <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+            </div>
+          </div>
+
+          {/* Tombol Bulan Berikutnya */}
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            disabled={selectedMonth === currentMonthKey || selectedMonth === 'all'}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 disabled:cursor-not-allowed text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer active:scale-95"
+            title="Bulan Berikutnya"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+        </div>
+
+      </div>
+
+      {/* 2. Kartu Ringkasan (Pemasukan, Pengeluaran, & Sisa Bersih) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        
+        {/* Kartu 1: Total Pemasukan (Hijau) */}
+        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>Total Pemasukan</span>
+              <span>Pemasukan</span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-emerald-400">
+            <h3 className="text-xl sm:text-2xl font-extrabold font-mono text-emerald-400">
               {formatRupiah(calculatedIncome)}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Gaji pokok & alokasi anggaran aktif
+            <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
+              Alokasi & pendapatan
             </p>
           </div>
 
-          <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
             <ArrowUpRight className="w-5 h-5" />
           </div>
         </div>
 
-        {/* Kartu 2: Total Pengeluaran Bulan Ini (Merah) */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+        {/* Kartu 2: Total Pengeluaran (Merah) */}
+        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-500 uppercase tracking-wider mb-1">
               <ArrowDownRight className="w-3.5 h-3.5" />
-              <span>Total Pengeluaran</span>
+              <span>Pengeluaran</span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-rose-500">
+            <h3 className="text-xl sm:text-2xl font-extrabold font-mono text-rose-500">
               {formatRupiah(calculatedExpense)}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Total {transactions.filter(t => t.type === 'expense').length} transaksi belanja & jajan
+            <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
+              {filteredTransactions.filter(t => t.type === 'expense').length} transaksi tercatat
             </p>
           </div>
 
-          <div className="w-11 h-11 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center shrink-0">
             <ArrowDownRight className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Kartu 3: Sisa Bersih (Net Flow) */}
+        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 uppercase tracking-wider mb-1">
+              <Scale className="w-3.5 h-3.5" />
+              <span>Sisa Kas</span>
+            </div>
+            <h3 className={`text-xl sm:text-2xl font-extrabold font-mono ${netBalance >= 0 ? 'text-sky-400' : 'text-rose-400'}`}>
+              {formatRupiah(netBalance)}
+            </h3>
+            <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
+              {netBalance >= 0 ? 'Surplus bulan ini' : 'Defisit anggaran'}
+            </p>
+          </div>
+
+          <div className="w-10 h-10 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-5 h-5" />
           </div>
         </div>
 
       </div>
 
-      {/* 2. Visualisasi Grafik Pie Chart & Breakdown Pengeluaran */}
+      {/* 3. Visualisasi Grafik Pie Chart & Breakdown Pengeluaran */}
       {categoryBreakdown.length === 0 ? (
         <div className="p-8 sm:p-12 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-3">
           <div className="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center mx-auto text-slate-400">
             <PieChartIcon className="w-7 h-7 stroke-[1.5]" />
           </div>
           <h4 className="text-base font-bold text-slate-200">
-            Belum Ada Data Pengeluaran
+            Tidak Ada Pengeluaran di {formatMonthLabel(selectedMonth)}
           </h4>
           <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-            Grafik Pie Chart dan rincian proporsi belanja akan otomatis terbentuk saat Anda mencatat pengeluaran harian.
+            Belum ada transaksi pengeluaran yang tercatat pada periode ini. Pilih bulan lain pada filter di atas untuk melihat riwayat sebelumnya.
           </p>
         </div>
       ) : (
@@ -234,7 +412,7 @@ export const Laporan = ({
                 </h3>
               </div>
               <span className="text-[11px] text-slate-400 font-medium">
-                Proporsi Kategori
+                {formatMonthLabel(selectedMonth)}
               </span>
             </div>
 
@@ -350,7 +528,7 @@ export const Laporan = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-100">
-                  Rincian Detail per Kategori
+                  Rincian Kategori ({formatMonthLabel(selectedMonth)})
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Diurutkan berdasarkan porsi pengeluaran terbesar
