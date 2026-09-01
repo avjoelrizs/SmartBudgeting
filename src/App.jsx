@@ -19,8 +19,8 @@ import { supabase } from './supabaseClient';
 const getUserSetupKey = (uid) => `catat_setup_${uid || 'guest'}`;
 const getUserBudgetKey = (uid) => `catat_budget_${uid || 'guest'}`;
 const getUserProfileKey = (uid) => `catat_user_${uid || 'guest'}`;
+const getUserAvatarKey = (uid) => `catat_avatar_${uid || 'guest'}`;
 const STORAGE_KEY_TXS = 'catatkeuangan_txs_v14';
-const STORAGE_KEY_IMAGE = 'catatkeuangan_avatar_v14';
 
 function MainApp() {
   // 1. Supabase Current User State
@@ -41,12 +41,7 @@ function MainApp() {
   });
 
   // 5. Profile Image State (Default: null)
-  const [profileImage, setProfileImage] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY_IMAGE) || null;
-    } catch (e) {}
-    return null;
-  });
+  const [profileImage, setProfileImage] = useState(null);
 
   // 6. Budget State: Default Semuanya NOL (0)
   const [budget, setBudget] = useState({
@@ -65,6 +60,10 @@ function MainApp() {
 
   // 8. Modal Catat Transaksi Controls
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+
+  // Computed Avatar: Prioritaskan Custom Upload, Fallback ke Google Avatar Foto Resmi
+  const googleAvatar = currentUser?.user_metadata?.avatar_url || currentUser?.user_metadata?.picture || null;
+  const effectiveProfileImage = profileImage || googleAvatar;
 
   // Helper untuk memuat cache instan berdasarkan user ID
   const applyCachedUserData = useCallback((user) => {
@@ -85,6 +84,10 @@ function MainApp() {
       const savedProfile = localStorage.getItem(getUserProfileKey(user.id));
       if (savedProfile) {
         setUserProfile(JSON.parse(savedProfile));
+      }
+      const savedAvatar = localStorage.getItem(getUserAvatarKey(user.id));
+      if (savedAvatar) {
+        setProfileImage(savedAvatar);
       }
     } catch (e) {}
   }, []);
@@ -127,16 +130,6 @@ function MainApp() {
       subscription?.unsubscribe();
     };
   }, [applyCachedUserData]);
-
-  useEffect(() => {
-    try {
-      if (profileImage) {
-        localStorage.setItem(STORAGE_KEY_IMAGE, profileImage);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_IMAGE);
-      }
-    } catch (e) {}
-  }, [profileImage]);
 
   useEffect(() => {
     try {
@@ -605,19 +598,22 @@ function MainApp() {
     setTransactions([]);
     setIsSetupComplete(false);
 
+    if (currentUser?.id) {
+      try {
+        localStorage.removeItem(getUserSetupKey(currentUser.id));
+        localStorage.removeItem(getUserBudgetKey(currentUser.id));
+        localStorage.removeItem(getUserAvatarKey(currentUser.id));
+      } catch (e) {}
+    }
+
     try {
-      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(defaultUser));
-      localStorage.removeItem(STORAGE_KEY_IMAGE);
-      localStorage.setItem(STORAGE_KEY_BUDGET, JSON.stringify({ monthlyIncome: 0, savingsTarget: 0 }));
-      localStorage.setItem(STORAGE_KEY_TXS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEY_SETUP, JSON.stringify(false));
-      
       await updateUserProfileInSupabase({
         name: defaultUser.name,
         monthly_income: 0,
         savings_target: 0,
         is_setup_complete: false,
         bio: defaultUser.bio,
+        avatar_url: '',
       });
     } catch (e) {}
   };
@@ -661,7 +657,7 @@ function MainApp() {
           <div className="pb-4 sm:pb-5 border-b border-slate-800 mb-6">
             <Header 
               userName={userProfile?.name ? (userProfile.name.split(' ')[0] || userProfile.name) : (currentUser?.email?.split('@')[0] || 'Rizko')}
-              profileImage={profileImage}
+              profileImage={effectiveProfileImage}
             />
           </div>
 
@@ -711,8 +707,8 @@ function MainApp() {
             <Akun 
               userProfile={userProfile}
               onUpdateProfile={handleUpdateProfile}
-              profileImage={profileImage}
-              onUpdateProfileImage={setProfileImage}
+              profileImage={effectiveProfileImage}
+              onUpdateProfileImage={handleUpdateProfileImage}
               transactions={transactions}
               onLoadDemoData={handleLoadDemoData}
               onClearAllTransactions={handleClearAllTransactions}
