@@ -321,6 +321,14 @@ function MainApp() {
         sanitized.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
         setTransactions(sanitized);
+
+        // Jika akun ini sudah memiliki riwayat transaksi di database, otomatis anggap setup sudah selesai
+        if (sanitized.length > 0) {
+          setIsSetupComplete(true);
+          try {
+            localStorage.setItem(getUserSetupKey(uid), 'true');
+          } catch (e) {}
+        }
       }
     } catch (err) {
       console.error('Supabase fetch exception:', err);

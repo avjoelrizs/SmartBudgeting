@@ -36,7 +36,8 @@ export const TransactionHistory = ({ transactions = [], onDeleteTransaction }) =
     }
   }, [transactions, filterType, searchQuery]);
 
-  // Group transactions by dateLabel safely
+  // Group transacti
+  // ons by dateLabel safely
   const groupedTransactions = useMemo(() => {
     const groups = {};
     try {
