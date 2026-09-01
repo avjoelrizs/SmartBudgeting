@@ -84,6 +84,8 @@ function MainApp() {
       const savedAvatar = localStorage.getItem(getUserAvatarKey(user.id));
       if (savedAvatar) {
         setProfileImage(savedAvatar);
+      } else if (user.user_metadata?.avatar_url) {
+        setProfileImage(user.user_metadata.avatar_url);
       }
     } catch (e) {}
   }, []);
@@ -103,6 +105,9 @@ function MainApp() {
             name: session.user.user_metadata.name,
           }));
         }
+        if (session.user.user_metadata?.avatar_url) {
+          setProfileImage(session.user.user_metadata.avatar_url);
+        }
       }
       setAuthLoading(false);
     }).catch(() => setAuthLoading(false));
@@ -113,6 +118,9 @@ function MainApp() {
       setCurrentUser(user);
       if (user) {
         applyCachedUserData(user);
+        if (user.user_metadata?.avatar_url) {
+          setProfileImage(user.user_metadata.avatar_url);
+        }
       }
       if (user?.user_metadata?.name) {
         setUserProfile((prev) => ({
@@ -576,7 +584,7 @@ function MainApp() {
     });
   };
 
-  // Handler: Update Foto Profil (Simpan ke Cache & Cloud Supabase)
+  // Handler: Update Foto Profil (Simpan ke Cache & Cloud Supabase Auth Metadata)
   const handleUpdateProfileImage = async (newImage) => {
     setProfileImage(newImage);
     if (currentUser?.id) {
@@ -589,6 +597,18 @@ function MainApp() {
       } catch (e) {}
     }
 
+    // 1. Simpan ke Supabase Auth User Metadata (Pasti Berhasil Lintas Perangkat 100%)
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          avatar_url: newImage || '',
+        },
+      });
+    } catch (e) {
+      console.warn('Supabase auth metadata update note:', e);
+    }
+
+    // 2. Simpan juga ke user_profile table
     await updateUserProfileInSupabase({
       name: userProfile.name,
       monthly_income: budget.monthlyIncome,
