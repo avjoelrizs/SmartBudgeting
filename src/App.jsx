@@ -20,7 +20,7 @@ const getUserSetupKey = (uid) => `catat_setup_${uid || 'guest'}`;
 const getUserBudgetKey = (uid) => `catat_budget_${uid || 'guest'}`;
 const getUserProfileKey = (uid) => `catat_user_${uid || 'guest'}`;
 const getUserAvatarKey = (uid) => `catat_avatar_${uid || 'guest'}`;
-const STORAGE_KEY_TXS = 'catatkeuangan_txs_v14';
+const getUserTransactionsKey = (uid) => `catat_txs_${uid || 'guest'}`;
 
 function MainApp() {
   // 1. Supabase Current User State
@@ -36,8 +36,8 @@ function MainApp() {
 
   // 4. User Profile State
   const [userProfile, setUserProfile] = useState({
-    name: 'Rizko Juli Afriyanto',
-    bio: 'Mahasiswa Informatika, Universitas Amikom Purwokerto',
+    name: 'Pengguna',
+    bio: 'Pengguna Catat Keuangan',
   });
 
   // 5. Profile Image State (Default: null)
@@ -50,31 +50,32 @@ function MainApp() {
   });
 
   // 7. Transactions State: Default Kosong []
-  const [transactions, setTransactions] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TXS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return [];
-  });
+  const [transactions, setTransactions] = useState([]);
 
   // 8. Modal Catat Transaksi Controls
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
 
-  // Helper untuk memuat cache instan berdasarkan user ID
+  // Helper untuk memuat cache instan berdasarkan user ID yang login saat ini
   const applyCachedUserData = useCallback((user) => {
     if (!user?.id) return;
     try {
+      // 1. Status Setup
       const savedSetup = localStorage.getItem(getUserSetupKey(user.id));
       if (savedSetup === 'true' || savedSetup === true) {
         setIsSetupComplete(true);
+      } else {
+        setIsSetupComplete(false);
       }
+
+      // 2. Budget
       const savedBudget = localStorage.getItem(getUserBudgetKey(user.id));
       if (savedBudget) {
         const parsed = JSON.parse(savedBudget);
         if (parsed && (parsed.monthlyIncome > 0 || parsed.savingsTarget > 0)) {
           setBudget(parsed);
           setIsSetupComplete(true);
+        } else {
+          setBudget({ monthlyIncome: 0, savingsTarget: 0 });
         }
       } else if (Number(user.user_metadata?.monthly_income) > 0 || Number(user.user_metadata?.savings_target) > 0) {
         const metaBudget = {
@@ -87,19 +88,54 @@ function MainApp() {
           localStorage.setItem(getUserBudgetKey(user.id), JSON.stringify(metaBudget));
           localStorage.setItem(getUserSetupKey(user.id), 'true');
         } catch (e) {}
+      } else {
+        setBudget({ monthlyIncome: 0, savingsTarget: 0 });
       }
 
+      // 3. Transaksi Cache Terisolasi per User
+      const savedTxs = localStorage.getItem(getUserTransactionsKey(user.id));
+      if (savedTxs) {
+        const parsedTxs = JSON.parse(savedTxs);
+        if (Array.isArray(parsedTxs)) {
+          setTransactions(parsedTxs);
+          if (parsedTxs.length > 0) {
+            setIsSetupComplete(true);
+          }
+        } else {
+          setTransactions([]);
+        }
+      } else {
+        setTransactions([]);
+      }
+
+      // 4. Profil User (Nama & Bio)
+      const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Pengguna';
       const savedProfile = localStorage.getItem(getUserProfileKey(user.id));
       if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile));
+        const parsedProfile = JSON.parse(savedProfile);
+        setUserProfile({
+          name: parsedProfile.name || defaultName,
+          bio: parsedProfile.bio || 'Pengguna Catat Keuangan',
+        });
+      } else {
+        setUserProfile({
+          name: defaultName,
+          bio: 'Pengguna Catat Keuangan',
+        });
       }
+
+      // 5. Foto Profil Kustom
       const savedAvatar = localStorage.getItem(getUserAvatarKey(user.id));
       if (savedAvatar) {
         setProfileImage(savedAvatar);
       } else if (user.user_metadata?.avatar_url) {
         setProfileImage(user.user_metadata.avatar_url);
+      } else {
+        setProfileImage(null);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error applyCachedUserData:', e);
+    }
   }, []);
 
   // ============================================================================
@@ -111,15 +147,13 @@ function MainApp() {
       if (session?.user) {
         setCurrentUser(session.user);
         applyCachedUserData(session.user);
-        if (session.user.user_metadata?.name) {
-          setUserProfile((prev) => ({
-            ...prev,
-            name: session.user.user_metadata.name,
-          }));
-        }
-        if (session.user.user_metadata?.avatar_url) {
-          setProfileImage(session.user.user_metadata.avatar_url);
-        }
+      } else {
+        setCurrentUser(null);
+        setTransactions([]);
+        setBudget({ monthlyIncome: 0, savingsTarget: 0 });
+        setIsSetupComplete(false);
+        setProfileImage(null);
+        setUserProfile({ name: 'Pengguna', bio: 'Pengguna Catat Keuangan' });
       }
       setAuthLoading(false);
     }).catch(() => setAuthLoading(false));
@@ -130,15 +164,14 @@ function MainApp() {
       setCurrentUser(user);
       if (user) {
         applyCachedUserData(user);
-        if (user.user_metadata?.avatar_url) {
-          setProfileImage(user.user_metadata.avatar_url);
-        }
-      }
-      if (user?.user_metadata?.name) {
-        setUserProfile((prev) => ({
-          ...prev,
-          name: user.user_metadata.name,
-        }));
+      } else {
+        // Bersihkan seluruh state ketika logout agar tidak bocor ke akun berikutnya
+        setCurrentUser(null);
+        setTransactions([]);
+        setBudget({ monthlyIncome: 0, savingsTarget: 0 });
+        setIsSetupComplete(false);
+        setProfileImage(null);
+        setUserProfile({ name: 'Pengguna', bio: 'Pengguna Catat Keuangan' });
       }
     });
 
@@ -147,11 +180,14 @@ function MainApp() {
     };
   }, [applyCachedUserData]);
 
+  // Simpan transaksi secara terisolasi ke key user_id yang sedang aktif
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_TXS, JSON.stringify(transactions));
-    } catch (e) {}
-  }, [transactions]);
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem(getUserTransactionsKey(currentUser.id), JSON.stringify(transactions));
+      } catch (e) {}
+    }
+  }, [transactions, currentUser?.id]);
 
   // ============================================================================
   // SUPABASE: Ambil Data User Profile (Multi-User by user_id)
@@ -161,47 +197,29 @@ function MainApp() {
     if (!uid) return;
 
     try {
-      let profileData = null;
-
-      // 1. Coba cari berdasarkan user_id spesifik
-      const { data, error } = await supabase
+      const { data: profileData, error } = await supabase
         .from('user_profile')
         .select('*')
         .eq('user_id', uid)
         .maybeSingle();
 
-      if (!error && data) {
-        profileData = data;
-      }
+      const userMetaName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || currentUser?.email?.split('@')[0] || 'Pengguna';
 
-      // 2. Fallback: jika belum ada data di user_id, cari di id = 1 atau row pertama
-      if (!profileData || (Number(profileData.monthly_income) === 0 && Number(profileData.savings_target) === 0)) {
-        const { data: fallbackData } = await supabase
-          .from('user_profile')
-          .select('*')
-          .order('id', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (fallbackData && (Number(fallbackData.monthly_income) > 0 || Number(fallbackData.savings_target) > 0)) {
-          profileData = fallbackData;
-        }
-      }
-
-      if (profileData) {
+      if (!error && profileData) {
         const income = Number(profileData.monthly_income) || Number(currentUser?.user_metadata?.monthly_income) || 0;
         const savings = Number(profileData.savings_target) || Number(currentUser?.user_metadata?.savings_target) || 0;
         const isComplete = profileData.is_setup_complete !== undefined && profileData.is_setup_complete !== null
           ? Boolean(profileData.is_setup_complete)
           : (income > 0 || savings > 0);
 
-        setUserProfile((prev) => ({
-          ...prev,
-          name: profileData.name || currentUser?.user_metadata?.name || prev.name,
-          bio: profileData.bio || prev.bio,
-        }));
+        const finalName = profileData.name || userMetaName;
 
-        // Hanya timpa budget jika server memiliki nilai > 0
+        setUserProfile({
+          name: finalName,
+          bio: profileData.bio || 'Pengguna Catat Keuangan',
+        });
+
+        // Hanya timpa budget jika bernilai > 0
         if (income > 0 || savings > 0) {
           setBudget({
             monthlyIncome: income,
@@ -228,10 +246,16 @@ function MainApp() {
         try {
           localStorage.setItem(getUserSetupKey(uid), JSON.stringify(isComplete));
           localStorage.setItem(getUserProfileKey(uid), JSON.stringify({
-            name: profileData.name || currentUser?.user_metadata?.name || 'Rizko',
-            bio: profileData.bio || '',
+            name: finalName,
+            bio: profileData.bio || 'Pengguna Catat Keuangan',
           }));
         } catch (e) {}
+      } else {
+        // User baru belum punya baris di cloud -> Pasang default nama dari metadata akun
+        setUserProfile((prev) => ({
+          name: userMetaName || prev.name,
+          bio: prev.bio || 'Pengguna Catat Keuangan',
+        }));
       }
     } catch (err) {
       console.error('Exception saat fetch user_profile:', err);
@@ -262,7 +286,7 @@ function MainApp() {
         updatePayload.avatar_url = profileImage;
       }
 
-      // 1. Simpan di cache lokal terlebih dahulu agar selalu instan
+      // 1. Simpan di cache lokal khusus user_id ini
       try {
         localStorage.setItem(getUserSetupKey(currentUser.id), 'true');
         localStorage.setItem(getUserBudgetKey(currentUser.id), JSON.stringify({
@@ -278,42 +302,21 @@ function MainApp() {
         }
       } catch (e) {}
 
-      // 2. Simpan ke database Supabase secara pasti
-      let isSuccess = false;
-
-      // Cek apakah sudah ada baris profil untuk user_id ini
+      // 2. Simpan ke database Supabase KHUSUS user_id ini (TIDAK BOLEH menimpa user lain)
       const { data: existingRows } = await supabase
         .from('user_profile')
         .select('id')
         .eq('user_id', currentUser.id);
 
       if (existingRows && existingRows.length > 0) {
-        // Baris sudah ada -> Lakukan UPDATE
-        const { error: updateErr } = await supabase
+        await supabase
           .from('user_profile')
           .update(updatePayload)
           .eq('user_id', currentUser.id);
-
-        if (!updateErr) isSuccess = true;
       } else {
-        // Baris belum ada -> Lakukan INSERT baris baru
-        const { error: insertErr } = await supabase
+        await supabase
           .from('user_profile')
           .insert([updatePayload]);
-
-        if (!insertErr) isSuccess = true;
-      }
-
-      // Fallback: Jika tabel Supabase memakai skema id = 1 lama
-      if (!isSuccess) {
-        const fallbackPayload = {
-          name: updatePayload.name,
-          monthly_income: updatePayload.monthly_income,
-          savings_target: updatePayload.savings_target,
-          is_setup_complete: updatePayload.is_setup_complete,
-          avatar_url: updatePayload.avatar_url || '',
-        };
-        await supabase.from('user_profile').update(fallbackPayload).eq('id', 1);
       }
     } catch (err) {
       console.error('Exception saat update user_profile di Supabase:', err);
@@ -362,6 +365,9 @@ function MainApp() {
         sanitized.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
         setTransactions(sanitized);
+        try {
+          localStorage.setItem(getUserTransactionsKey(uid), JSON.stringify(sanitized));
+        } catch (e) {}
 
         // Jika akun ini sudah memiliki riwayat transaksi di database, otomatis anggap setup sudah selesai
         if (sanitized.length > 0) {

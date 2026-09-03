@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   User, 
   Download, 
@@ -16,8 +16,8 @@ import { CATEGORIES } from '../../data/dummyTransactions';
 
 export const Akun = ({ 
   userProfile = {
-    name: 'Rizko Juli Afriyanto',
-    bio: 'Mahasiswa Informatika, Universitas Amikom Purwokerto',
+    name: 'Pengguna',
+    bio: 'Pengguna Catat Keuangan',
   },
   onUpdateProfile,
   profileImage = null,
@@ -32,8 +32,14 @@ export const Akun = ({
 
   // State Profile Editing
   const [isEditing, setIsEditing] = useState(false);
-  const [nameInput, setNameInput] = useState(userProfile.name || 'Rizko Juli Afriyanto');
-  const [bioInput, setBioInput] = useState(userProfile.bio || 'Mahasiswa Informatika, Universitas Amikom Purwokerto');
+  const [nameInput, setNameInput] = useState(userProfile?.name || 'Pengguna');
+  const [bioInput, setBioInput] = useState(userProfile?.bio || 'Pengguna Catat Keuangan');
+
+  // Sinkronkan input edit saat userProfile berubah (misal ganti akun login)
+  useEffect(() => {
+    if (userProfile?.name) setNameInput(userProfile.name);
+    if (userProfile?.bio !== undefined) setBioInput(userProfile.bio);
+  }, [userProfile?.name, userProfile?.bio]);
 
   // State Modals & Toasts
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
