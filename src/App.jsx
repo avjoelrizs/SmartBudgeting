@@ -819,6 +819,7 @@ function MainApp() {
 
           {activeTab === 'akun' && (
             <Akun 
+              currentUser={currentUser}
               userProfile={userProfile}
               onUpdateProfile={handleUpdateProfile}
               profileImage={profileImage}

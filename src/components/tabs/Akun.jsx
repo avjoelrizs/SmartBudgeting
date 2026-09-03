@@ -15,6 +15,7 @@ import {
 import { CATEGORIES } from '../../data/dummyTransactions';
 
 export const Akun = ({ 
+  currentUser = null,
   userProfile = {
     name: 'Pengguna',
     bio: 'Pengguna Catat Keuangan',
@@ -275,7 +276,7 @@ export const Akun = ({
 
             {/* Info Nama, Status, & Bio */}
             <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-0.5">
                 <h2 className="text-xl sm:text-2xl font-extrabold text-slate-100 tracking-tight break-words">
                   {userProfile.name}
                 </h2>
@@ -284,11 +285,17 @@ export const Akun = ({
                 </span>
               </div>
 
+              {currentUser?.email && (
+                <p className="text-xs text-emerald-400/80 font-mono mb-1.5">
+                  {currentUser.email}
+                </p>
+              )}
+
               <p className="text-xs sm:text-sm text-slate-400 font-medium leading-relaxed break-words">
                 {userProfile.bio}
               </p>
 
-              <p className="text-[11px] text-slate-500 mt-2.5 font-mono">
+              <p className="text-[11px] text-slate-500 mt-2 font-mono">
                 {transactions.length} total transaksi tercatat
               </p>
             </div>
