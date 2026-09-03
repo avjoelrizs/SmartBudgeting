@@ -624,6 +624,18 @@ function MainApp() {
   const handleUpdateProfile = async (newProfile) => {
     setUserProfile(newProfile);
 
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem(getUserProfileKey(currentUser.id), JSON.stringify(newProfile));
+        await supabase.auth.updateUser({
+          data: {
+            name: newProfile.name,
+            full_name: newProfile.name,
+          },
+        });
+      } catch (e) {}
+    }
+
     await updateUserProfileInSupabase({
       name: newProfile.name,
       monthly_income: budget.monthlyIncome,
